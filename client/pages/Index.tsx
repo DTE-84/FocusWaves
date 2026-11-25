@@ -3,11 +3,14 @@ import {
   ArrowUpRight,
   AudioWaveform,
   Brain,
+  CreditCard,
   Crown,
   Download,
   ExternalLink,
   Headphones,
   Lock,
+  LogIn,
+  LogOut,
   Maximize2,
   Minimize2,
   ShieldCheck,
@@ -16,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { soundLibrary, type Track } from "@/data/soundLibrary";
+import { useAuth } from "@/context/AuthContext";
 import { useAudioGenerator } from "@/hooks/useAudioGenerator";
 import { useFocusTelemetry } from "@/hooks/useFocusTelemetry";
 import { useMobileExperience } from "@/hooks/useMobileExperience";
@@ -25,7 +29,9 @@ import {
   isTimerFree,
   isTrackFree,
   useProAccess,
+  type BillingPlan,
 } from "@/hooks/useProAccess";
+import { AuthModal } from "@/components/focus/AuthModal";
 import { FocusConsole } from "@/components/focus/FocusConsole";
 import { InstallAppDialog } from "@/components/focus/InstallAppDialog";
 import { ParkingLot } from "@/components/focus/ParkingLot";
@@ -42,15 +48,25 @@ export default function Index() {
   const [sessionMinutes, setSessionMinutes] = useState<number>(25);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [focusMode, setFocusMode] = useState<boolean>(false);
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+  const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<BillingPlan | null>(null);
+
+  const { user, signOut } = useAuth();
 
   const {
     isPro,
+    founderUnlocked,
+    subscription,
+    billingBusy,
     upgradeOpen,
     lockedFeatureLabel,
     openUpgrade,
     closeUpgrade,
+    refreshSubscription,
+    startCheckout,
+    openManageSubscription,
     redeemAccessKey,
-    revokeProPreview,
+    revokeFounderAccess,
   } = useProAccess();
 
   const {
@@ -99,7 +115,39 @@ export default function Index() {
   const currentTrack = soundLibrary[currentTrackIdx];
   const logoSrc = `${import.meta.env.BASE_URL}focuswaveslogo.png`;
 
-  // Ensure Free Preview stays cleanly within unlocked settings if Pro is re-locked
+  // Handle Stripe Checkout return (?checkout=success | cancelled)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (!checkout) return;
+
+    if (checkout === "success") {
+      void refreshSubscription();
+      toast.success("Welcome to FocusWaves Pro!", {
+        description: "Your 7-day free trial is active. All 15 protocols & Pro tools are unlocked.",
+      });
+    } else if (checkout === "cancelled") {
+      toast.message("Checkout cancelled — still on Free Preview.");
+    }
+
+    params.delete("checkout");
+    const clean = params.toString();
+    const nextUrl = `${window.location.pathname}${clean ? `?${clean}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, [refreshSubscription]);
+
+  // If user signed in right after clicking Start Trial, continue directly to Stripe Checkout
+  useEffect(() => {
+    if (user && pendingCheckoutPlan) {
+      const plan = pendingCheckoutPlan;
+      setPendingCheckoutPlan(null);
+      startCheckout(plan).catch((err) => {
+        toast.error(err instanceof Error ? err.message : "Could not start checkout.");
+      });
+    }
+  }, [user, pendingCheckoutPlan, startCheckout]);
+
+  // Ensure Free Preview stays cleanly within unlocked settings if Pro is revoked
   useEffect(() => {
     if (!isPro) {
       if (!isTrackFree(currentTrack.id)) {
@@ -212,6 +260,16 @@ export default function Index() {
       description: activeObjective.trim() || currentTrack.name,
     });
   }, [elapsedSeconds, recordSession, currentTrack.name, currentTrack.band, activeObjective, triggerHaptic]);
+
+  const handleManageSubscriptionClick = useCallback(async () => {
+    try {
+      await openManageSubscription();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not open subscription management."
+      );
+    }
+  }, [openManageSubscription]);
 
   // Honor PWA Home Screen shortcut query parameters (?preset=initiation|deep|reset)
   useEffect(() => {
@@ -364,14 +422,18 @@ export default function Index() {
                   Focus<span className="text-[#43B0F8]">Waves</span>
                 </div>
                 <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#D4E78A]/80">
-                  {isPro ? "Pro Studio · Active" : "Free Preview"}
+                  {subscription.isPro
+                    ? `Pro · ${subscription.tier}`
+                    : founderUnlocked
+                    ? "Founder Pro"
+                    : "Free Preview"}
                 </div>
               </div>
             </a>
           </div>
 
           {!focusMode && (
-            <div className="hidden md:flex items-center gap-7 text-sm font-medium text-[#97A7C0]">
+            <div className="hidden lg:flex items-center gap-6 text-sm font-medium text-[#97A7C0]">
               <a href="#console" className="hover:text-[#EEF4FA] transition">
                 Console
               </a>
@@ -397,18 +459,29 @@ export default function Index() {
           )}
 
           <div className="flex items-center gap-2">
-            {isPro ? (
+            {/* Billing / Pro Controls */}
+            {subscription.isPro || subscription.hasStripeCustomer ? (
+              <button
+                type="button"
+                disabled={billingBusy}
+                onClick={handleManageSubscriptionClick}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4E78A]/40 bg-[#D4E78A]/12 px-3 py-2 text-xs font-display font-bold text-[#D4E78A] hover:bg-[#D4E78A]/20 disabled:opacity-50 transition"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Manage Subscription</span>
+              </button>
+            ) : founderUnlocked ? (
               <button
                 type="button"
                 onClick={() => {
-                  revokeProPreview();
+                  revokeFounderAccess();
                   toast.message("Switched back to Free Preview mode");
                 }}
                 title="Click to test Free Preview mode"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4E78A]/40 bg-[#D4E78A]/12 px-3 py-2 text-xs font-mono font-bold uppercase tracking-wider text-[#D4E78A] hover:bg-[#D4E78A]/20 transition"
               >
                 <Crown className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Pro Active</span>
+                <span className="hidden sm:inline">Founder Pro</span>
               </button>
             ) : (
               <button
@@ -421,15 +494,41 @@ export default function Index() {
               </button>
             )}
 
+            {/* Auth Button */}
+            {user ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void signOut();
+                  toast.message("Signed out");
+                }}
+                title={`Signed in as ${user.email ?? "account"} — click to sign out`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-[#0F172D] px-2.5 py-2 text-xs font-medium text-[#97A7C0] hover:border-white/25 hover:text-[#EEF4FA] transition"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline max-w-[110px] truncate">
+                  {user.email?.split("@")[0]}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAuthModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-[#0F172D] px-3 py-2 text-xs font-display font-semibold text-[#EEF4FA] hover:border-[#43B0F8]/45 transition"
+              >
+                <LogIn className="w-3.5 h-3.5 text-[#43B0F8]" />
+                <span className="hidden sm:inline">Sign In</span>
+              </button>
+            )}
+
             {!isInstalled && (
               <button
                 type="button"
                 onClick={handleInstallClick}
                 aria-label="Install FocusWaves App"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#43B0F8]/35 bg-[#43B0F8]/12 px-3 py-2 text-xs font-display font-bold text-[#7AC8FF] hover:bg-[#43B0F8]/22 transition"
+                className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-[#43B0F8]/35 bg-[#43B0F8]/12 px-2.5 py-2 text-xs font-display font-bold text-[#7AC8FF] hover:bg-[#43B0F8]/22 transition"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Install</span>
               </button>
             )}
 
@@ -461,7 +560,7 @@ export default function Index() {
                   ) : (
                     <Maximize2 className="w-3.5 h-3.5 text-[#43B0F8]" />
                   )}
-                  Focus Mode
+                  Focus
                 </>
               )}
             </button>
@@ -538,7 +637,7 @@ export default function Index() {
                 <div className="lg:col-span-5 space-y-7">
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#43B0F8]/30 bg-[#43B0F8]/10 px-3.5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7AC8FF]">
                     <span className="h-2 w-2 rounded-full bg-[#43B0F8] shadow-[0_0_10px_#43B0F8] animate-pulse" />
-                    {isPro ? "FocusWaves Pro · Full Suite Active" : "Free Preview · 3 Core Protocols Live"}
+                    {isPro ? "FocusWaves Pro · Full Suite Active" : "Free Preview · 7-Day Pro Trial Available"}
                   </div>
 
                   <div className="space-y-4">
@@ -551,7 +650,7 @@ export default function Index() {
                       <span className="text-[#D4E78A]">ADHD.</span>
                     </h1>
                     <p className="text-base text-[#97A7C0] leading-relaxed">
-                      Real-time binaural beats, speaker-safe isochronic pulses, and brown/pink noise masking paired with a single-task anchor and brain-dump parking lot. Test 3 core protocols immediately—upgrade to Pro for all 15 protocols and full executive tooling.
+                      Real-time binaural beats, speaker-safe isochronic pulses, and brown/pink noise masking paired with a single-task anchor and brain-dump parking lot. Test 3 core protocols free—or start a 7-day Pro trial for the complete studio.
                     </p>
                   </div>
 
@@ -607,9 +706,9 @@ export default function Index() {
                     <div>
                       <div className="flex items-center gap-1.5 text-xs font-display font-bold text-[#EEF4FA]">
                         <ShieldCheck className="w-3.5 h-3.5 text-[#43B0F8]" />
-                        100% Local
+                        $49.99/yr
                       </div>
-                      <p className="text-[11px] text-[#6B7E9E] mt-0.5">Zero tracking</p>
+                      <p className="text-[11px] text-[#6B7E9E] mt-0.5">7-day free trial</p>
                     </div>
                   </div>
                 </div>
@@ -703,7 +802,7 @@ export default function Index() {
                 Focus<span className="text-[#43B0F8]">Waves</span>
               </div>
               <p className="font-mono text-[11px] text-[#6B7E9E] mt-1">
-                © 2026 DTE Solutions LLC · Zero-Server Acoustic Focus Platform
+                © 2026 DTE Solutions LLC · Acoustic Focus &amp; Neurodivergent Productivity
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-6 text-xs text-[#97A7C0]">
@@ -753,16 +852,41 @@ export default function Index() {
       <ProUpgradeModal
         open={upgradeOpen}
         featureLabel={lockedFeatureLabel}
+        isSignedIn={Boolean(user)}
+        subscription={subscription}
+        billingBusy={billingBusy}
         onClose={closeUpgrade}
+        onStartCheckout={startCheckout}
+        onManageSubscription={handleManageSubscriptionClick}
+        onNeedAuth={(plan) => {
+          setPendingCheckoutPlan(plan);
+          closeUpgrade();
+          setAuthModalOpen(true);
+        }}
         onRedeemKey={(key) => {
           const ok = redeemAccessKey(key);
           if (ok) {
             triggerHaptic("success");
-            toast.success("FocusWaves Pro unlocked", {
+            toast.success("Founder Pro access unlocked", {
               description: "All 15 neural protocols and Pro executive tools are active.",
             });
           }
           return ok;
+        }}
+      />
+
+      <AuthModal
+        open={authModalOpen}
+        subtitle={
+          pendingCheckoutPlan
+            ? `Sign in or create an account to start your 7-day FocusWaves Pro trial (${
+                pendingCheckoutPlan === "annual" ? "$49.99/yr" : "$7.99/mo"
+              }).`
+            : "Sign in to manage or sync your FocusWaves Pro subscription."
+        }
+        onClose={() => {
+          setAuthModalOpen(false);
+          setPendingCheckoutPlan(null);
         }}
       />
     </div>
