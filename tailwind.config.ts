@@ -13,8 +13,10 @@ export default {
       },
     },
     fontFamily: {
-      playfair: ["Playfair Display", "serif"],
-      lora: ["Lora", "serif"],
+      sans: ["Plus Jakarta Sans", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+      display: ["Plus Jakarta Sans", "sans-serif"],
+      serif: ["Instrument Serif", "Georgia", "serif"],
+      mono: ["JetBrains Mono", "monospace"],
     },
     extend: {
       colors: {
@@ -61,10 +63,6 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        cobalt: "hsl(var(--cobalt))",
-        graphite: "hsl(var(--graphite))",
-        midnight: "hsl(var(--midnight))",
-        diamond: "hsl(var(--diamond))",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -73,20 +71,12 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
       },
       animation: {
