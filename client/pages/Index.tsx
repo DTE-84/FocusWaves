@@ -3,9 +3,11 @@ import {
   ArrowUpRight,
   AudioWaveform,
   Brain,
+  Crown,
   Download,
   ExternalLink,
   Headphones,
+  Lock,
   Maximize2,
   Minimize2,
   ShieldCheck,
@@ -17,9 +19,17 @@ import { soundLibrary, type Track } from "@/data/soundLibrary";
 import { useAudioGenerator } from "@/hooks/useAudioGenerator";
 import { useFocusTelemetry } from "@/hooks/useFocusTelemetry";
 import { useMobileExperience } from "@/hooks/useMobileExperience";
+import {
+  isEntrainmentFree,
+  isNoiseFree,
+  isTimerFree,
+  isTrackFree,
+  useProAccess,
+} from "@/hooks/useProAccess";
 import { FocusConsole } from "@/components/focus/FocusConsole";
 import { InstallAppDialog } from "@/components/focus/InstallAppDialog";
 import { ParkingLot } from "@/components/focus/ParkingLot";
+import { ProUpgradeModal } from "@/components/focus/ProUpgradeModal";
 import { SoundLibrary } from "@/components/focus/SoundLibrary";
 import { ScienceSection } from "@/components/focus/ScienceSection";
 import { TelemetryStrip } from "@/components/focus/TelemetryStrip";
@@ -32,6 +42,16 @@ export default function Index() {
   const [sessionMinutes, setSessionMinutes] = useState<number>(25);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [focusMode, setFocusMode] = useState<boolean>(false);
+
+  const {
+    isPro,
+    upgradeOpen,
+    lockedFeatureLabel,
+    openUpgrade,
+    closeUpgrade,
+    redeemAccessKey,
+    revokeProPreview,
+  } = useProAccess();
 
   const {
     isPlaying,
@@ -79,6 +99,36 @@ export default function Index() {
   const currentTrack = soundLibrary[currentTrackIdx];
   const logoSrc = `${import.meta.env.BASE_URL}focuswaveslogo.png`;
 
+  // Ensure Free Preview stays cleanly within unlocked settings if Pro is re-locked
+  useEffect(() => {
+    if (!isPro) {
+      if (!isTrackFree(currentTrack.id)) {
+        setCurrentTrackIdx(0);
+      }
+      if (!isTimerFree(sessionMinutes)) {
+        setSessionMinutes(25);
+      }
+      if (!isNoiseFree(noiseColor)) {
+        setNoiseColor("brown");
+      }
+      if (!isEntrainmentFree(entrainmentMode)) {
+        setEntrainmentMode("binaural");
+      }
+      if (focusMode) {
+        setFocusMode(false);
+      }
+    }
+  }, [
+    isPro,
+    currentTrack.id,
+    sessionMinutes,
+    noiseColor,
+    entrainmentMode,
+    focusMode,
+    setNoiseColor,
+    setEntrainmentMode,
+  ]);
+
   const handleTogglePlay = useCallback(() => {
     triggerHaptic("tap");
     togglePlay(currentTrack.baseFrequency, currentTrack.beatFrequency);
@@ -86,44 +136,66 @@ export default function Index() {
 
   const handleSelectTrack = useCallback(
     (track: Track, autoPlay = false) => {
+      if (!isPro && !isTrackFree(track.id)) {
+        openUpgrade(`${track.name} (${track.band} ${track.beatFrequency} Hz)`);
+        return;
+      }
+
       const idx = soundLibrary.findIndex((t) => t.id === track.id);
       if (idx === -1) return;
 
+      const resolvedMinutes =
+        isPro || isTimerFree(track.recommendedMinutes) ? track.recommendedMinutes : 25;
+      const resolvedNoise =
+        isPro || isNoiseFree(track.recommendedNoise) ? track.recommendedNoise : "brown";
+
       triggerHaptic("tap");
       setCurrentTrackIdx(idx);
-      setSessionMinutes(track.recommendedMinutes);
+      setSessionMinutes(resolvedMinutes);
       setElapsedSeconds(0);
-      setNoiseColor(track.recommendedNoise);
+      setNoiseColor(resolvedNoise);
 
       if (autoPlay || isPlaying) {
         startTrack(
           track.baseFrequency,
           track.beatFrequency,
           entrainmentMode,
-          track.recommendedNoise
+          resolvedNoise
         );
       }
     },
-    [triggerHaptic, entrainmentMode, isPlaying, setNoiseColor, startTrack]
+    [isPro, openUpgrade, triggerHaptic, entrainmentMode, isPlaying, setNoiseColor, startTrack]
   );
 
   const handlePrevTrack = useCallback(() => {
-    const prevIdx = (currentTrackIdx - 1 + soundLibrary.length) % soundLibrary.length;
-    handleSelectTrack(soundLibrary[prevIdx], isPlaying);
-  }, [currentTrackIdx, handleSelectTrack, isPlaying]);
+    const pool = isPro
+      ? soundLibrary
+      : soundLibrary.filter((t) => isTrackFree(t.id));
+    const curPoolIdx = pool.findIndex((t) => t.id === currentTrack.id);
+    const prevTrack = pool[(curPoolIdx - 1 + pool.length) % pool.length];
+    if (prevTrack) handleSelectTrack(prevTrack, isPlaying);
+  }, [isPro, currentTrack.id, handleSelectTrack, isPlaying]);
 
   const handleNextTrack = useCallback(() => {
-    const nextIdx = (currentTrackIdx + 1) % soundLibrary.length;
-    handleSelectTrack(soundLibrary[nextIdx], isPlaying);
-  }, [currentTrackIdx, handleSelectTrack, isPlaying]);
+    const pool = isPro
+      ? soundLibrary
+      : soundLibrary.filter((t) => isTrackFree(t.id));
+    const curPoolIdx = pool.findIndex((t) => t.id === currentTrack.id);
+    const nextTrack = pool[(curPoolIdx + 1) % pool.length];
+    if (nextTrack) handleSelectTrack(nextTrack, isPlaying);
+  }, [isPro, currentTrack.id, handleSelectTrack, isPlaying]);
 
   const handleSelectSessionMinutes = useCallback(
     (mins: number) => {
+      if (!isPro && !isTimerFree(mins)) {
+        openUpgrade(mins === 0 ? "Continuous Playback Block" : `${mins}-Minute Extended Block`);
+        return;
+      }
       triggerHaptic("tap");
       setSessionMinutes(mins);
       setElapsedSeconds(0);
     },
-    [triggerHaptic]
+    [isPro, openUpgrade, triggerHaptic]
   );
 
   const handleResetTimer = useCallback(() => {
@@ -149,7 +221,7 @@ export default function Index() {
 
     const map: Record<string, { trackId: number; mins: number }> = {
       initiation: { trackId: 3, mins: 15 },
-      deep: { trackId: 1, mins: 45 },
+      deep: { trackId: 1, mins: isPro ? 45 : 25 },
       reset: { trackId: 4, mins: 15 },
     };
 
@@ -157,12 +229,13 @@ export default function Index() {
     if (!match) return;
     const idx = soundLibrary.findIndex((t) => t.id === match.trackId);
     if (idx !== -1) {
+      const target = soundLibrary[idx];
       setCurrentTrackIdx(idx);
       setSessionMinutes(match.mins);
-      setNoiseColor(soundLibrary[idx].recommendedNoise);
-      setFocusMode(true);
+      setNoiseColor(isPro || isNoiseFree(target.recommendedNoise) ? target.recommendedNoise : "brown");
+      if (isPro) setFocusMode(true);
     }
-  }, [setNoiseColor]);
+  }, [isPro, setNoiseColor]);
 
   // Real-time session timer + completion chime & automatic telemetry logging
   useEffect(() => {
@@ -242,19 +315,23 @@ export default function Index() {
     }
   }, [currentTrack, isPlaying, startTrack, stopTrack, handlePrevTrack, handleNextTrack]);
 
-  // Quick-start ADHD presets
+  // Quick-start ADHD presets (all 3 work seamlessly in Free Preview)
   const launchQuickPreset = (trackId: number, mins: number) => {
     const found = soundLibrary.find((t) => t.id === trackId);
     if (!found) return;
     const idx = soundLibrary.findIndex((t) => t.id === trackId);
+    const resolvedMins = isPro || isTimerFree(mins) ? mins : 25;
+    const resolvedNoise =
+      isPro || isNoiseFree(found.recommendedNoise) ? found.recommendedNoise : "brown";
+
     triggerHaptic("tap");
     setCurrentTrackIdx(idx);
-    setSessionMinutes(mins);
+    setSessionMinutes(resolvedMins);
     setElapsedSeconds(0);
-    setNoiseColor(found.recommendedNoise);
-    startTrack(found.baseFrequency, found.beatFrequency, entrainmentMode, found.recommendedNoise);
-    toast.message(`Loaded ${found.name} (${mins}m)`, {
-      description: `${found.band} ${found.beatFrequency} Hz + ${found.recommendedNoise} noise`,
+    setNoiseColor(resolvedNoise);
+    startTrack(found.baseFrequency, found.beatFrequency, entrainmentMode, resolvedNoise);
+    toast.message(`Loaded ${found.name} (${resolvedMins}m)`, {
+      description: `${found.band} ${found.beatFrequency} Hz + ${resolvedNoise} noise`,
     });
   };
 
@@ -287,7 +364,7 @@ export default function Index() {
                   Focus<span className="text-[#43B0F8]">Waves</span>
                 </div>
                 <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#D4E78A]/80">
-                  Acoustic Studio · 2026
+                  {isPro ? "Pro Studio · Active" : "Free Preview"}
                 </div>
               </div>
             </a>
@@ -320,14 +397,39 @@ export default function Index() {
           )}
 
           <div className="flex items-center gap-2">
+            {isPro ? (
+              <button
+                type="button"
+                onClick={() => {
+                  revokeProPreview();
+                  toast.message("Switched back to Free Preview mode");
+                }}
+                title="Click to test Free Preview mode"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4E78A]/40 bg-[#D4E78A]/12 px-3 py-2 text-xs font-mono font-bold uppercase tracking-wider text-[#D4E78A] hover:bg-[#D4E78A]/20 transition"
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Pro Active</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openUpgrade("Full FocusWaves Pro Suite")}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#D4E78A] px-3 py-2 text-xs font-display font-bold text-[#070B18] hover:bg-[#E7F3B5] transition"
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span>Unlock Pro</span>
+              </button>
+            )}
+
             {!isInstalled && (
               <button
                 type="button"
                 onClick={handleInstallClick}
+                aria-label="Install FocusWaves App"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[#43B0F8]/35 bg-[#43B0F8]/12 px-3 py-2 text-xs font-display font-bold text-[#7AC8FF] hover:bg-[#43B0F8]/22 transition"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Install App</span>
+                <span className="hidden lg:inline">Install</span>
               </button>
             )}
 
@@ -335,9 +437,13 @@ export default function Index() {
               type="button"
               onClick={() => {
                 triggerHaptic("tap");
+                if (!isPro && !focusMode) {
+                  openUpgrade("Distraction-Free Focus Mode");
+                  return;
+                }
                 setFocusMode((prev) => !prev);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-display font-bold transition ${
+              className={`hidden sm:inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-display font-bold transition ${
                 focusMode
                   ? "border-[#43B0F8]/45 bg-[#43B0F8]/15 text-[#7AC8FF]"
                   : "border-white/12 bg-[#0F172D] text-[#EEF4FA] hover:border-[#43B0F8]/45"
@@ -350,7 +456,11 @@ export default function Index() {
                 </>
               ) : (
                 <>
-                  <Maximize2 className="w-3.5 h-3.5 text-[#43B0F8]" />
+                  {!isPro ? (
+                    <Lock className="w-3 h-3 text-[#D4E78A]" />
+                  ) : (
+                    <Maximize2 className="w-3.5 h-3.5 text-[#43B0F8]" />
+                  )}
                   Focus Mode
                 </>
               )}
@@ -375,6 +485,8 @@ export default function Index() {
                 <FocusConsole
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
+                  isPro={isPro}
+                  onRequestPro={openUpgrade}
                   volume={volume}
                   onVolumeChange={setVolume}
                   noiseColor={noiseColor}
@@ -407,6 +519,8 @@ export default function Index() {
               <div className="lg:col-span-5">
                 <ParkingLot
                   items={parkingItems}
+                  isPro={isPro}
+                  onRequestPro={openUpgrade}
                   onAdd={addParkingItem}
                   onToggle={toggleParkingItem}
                   onRemove={removeParkingItem}
@@ -424,7 +538,7 @@ export default function Index() {
                 <div className="lg:col-span-5 space-y-7">
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#43B0F8]/30 bg-[#43B0F8]/10 px-3.5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7AC8FF]">
                     <span className="h-2 w-2 rounded-full bg-[#43B0F8] shadow-[0_0_10px_#43B0F8] animate-pulse" />
-                    Installable PWA · Zero-Server DSP
+                    {isPro ? "FocusWaves Pro · Full Suite Active" : "Free Preview · 3 Core Protocols Live"}
                   </div>
 
                   <div className="space-y-4">
@@ -437,14 +551,14 @@ export default function Index() {
                       <span className="text-[#D4E78A]">ADHD.</span>
                     </h1>
                     <p className="text-base text-[#97A7C0] leading-relaxed">
-                      Real-time binaural beats, speaker-safe isochronic pulses, and brown/pink noise masking paired with a single-task anchor and brain-dump parking lot. Built to quiet noise and cut task-initiation friction.
+                      Real-time binaural beats, speaker-safe isochronic pulses, and brown/pink noise masking paired with a single-task anchor and brain-dump parking lot. Test 3 core protocols immediately—upgrade to Pro for all 15 protocols and full executive tooling.
                     </p>
                   </div>
 
                   {/* Quick-Start 1-Tap ADHD Presets */}
                   <div className="space-y-2.5">
                     <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7E9E]">
-                      1-Tap Quick Launch
+                      1-Tap Free Preview Launch
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -457,11 +571,11 @@ export default function Index() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => launchQuickPreset(1, 45)}
+                        onClick={() => launchQuickPreset(1, isPro ? 45 : 25)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-[#0F172D] px-3.5 py-2 text-xs font-display font-bold text-[#EEF4FA] hover:border-[#43B0F8]/45 transition"
                       >
                         <Brain className="w-3.5 h-3.5 text-[#43B0F8]" />
-                        45m Deep Focus
+                        {isPro ? "45m Deep Focus" : "25m Deep Focus"}
                       </button>
                       <button
                         type="button"
@@ -495,7 +609,7 @@ export default function Index() {
                         <ShieldCheck className="w-3.5 h-3.5 text-[#43B0F8]" />
                         100% Local
                       </div>
-                      <p className="text-[11px] text-[#6B7E9E] mt-0.5">Zero sign-up</p>
+                      <p className="text-[11px] text-[#6B7E9E] mt-0.5">Zero tracking</p>
                     </div>
                   </div>
                 </div>
@@ -505,6 +619,8 @@ export default function Index() {
                   <FocusConsole
                     currentTrack={currentTrack}
                     isPlaying={isPlaying}
+                    isPro={isPro}
+                    onRequestPro={openUpgrade}
                     volume={volume}
                     onVolumeChange={setVolume}
                     noiseColor={noiseColor}
@@ -546,6 +662,8 @@ export default function Index() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <ParkingLot
                     items={parkingItems}
+                    isPro={isPro}
+                    onRequestPro={openUpgrade}
                     onAdd={addParkingItem}
                     onToggle={toggleParkingItem}
                     onRemove={removeParkingItem}
@@ -565,7 +683,9 @@ export default function Index() {
               tracks={soundLibrary}
               currentTrackId={currentTrack.id}
               isPlaying={isPlaying}
+              isPro={isPro}
               onSelectTrack={handleSelectTrack}
+              onRequestPro={openUpgrade}
             />
 
             {/* Acoustic Science & Architecture */}
@@ -628,6 +748,22 @@ export default function Index() {
         open={installHelpOpen}
         isIOS={isIOS}
         onClose={() => setInstallHelpOpen(false)}
+      />
+
+      <ProUpgradeModal
+        open={upgradeOpen}
+        featureLabel={lockedFeatureLabel}
+        onClose={closeUpgrade}
+        onRedeemKey={(key) => {
+          const ok = redeemAccessKey(key);
+          if (ok) {
+            triggerHaptic("success");
+            toast.success("FocusWaves Pro unlocked", {
+              description: "All 15 neural protocols and Pro executive tools are active.",
+            });
+          }
+          return ok;
+        }}
       />
     </div>
   );

@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Clock,
   Headphones,
+  Lock,
   Maximize2,
   Minimize2,
   Pause,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import type { EntrainmentMode, NoiseColor, Track } from "@/data/soundLibrary";
+import { isEntrainmentFree, isNoiseFree, isTimerFree } from "@/hooks/useProAccess";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { TrackIcon } from "./TrackIcon";
 
@@ -39,6 +41,8 @@ const NOISE_OPTIONS: Array<{ value: NoiseColor; label: string }> = [
 interface FocusConsoleProps {
   currentTrack: Track;
   isPlaying: boolean;
+  isPro: boolean;
+  onRequestPro: (featureLabel: string) => void;
   volume: number;
   onVolumeChange: (val: number) => void;
   noiseColor: NoiseColor;
@@ -75,6 +79,8 @@ function formatClock(totalSeconds: number): string {
 export function FocusConsole({
   currentTrack,
   isPlaying,
+  isPro,
+  onRequestPro,
   volume,
   onVolumeChange,
   noiseColor,
@@ -107,7 +113,7 @@ export function FocusConsole({
 
   return (
     <div className="fw-card rounded-2xl p-6 sm:p-7 space-y-6 relative overflow-hidden">
-      {/* Top Bar: Track Identity + Focus Mode Toggle */}
+      {/* Top Bar: Track Identity + Wake Lock + Focus Mode Toggle */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#43B0F8]/35 bg-[#43B0F8]/12 text-[#5CC0FF] shadow-[0_0_24px_rgba(67,176,248,0.2)]">
@@ -151,7 +157,13 @@ export function FocusConsole({
 
           <button
             type="button"
-            onClick={onToggleFocusMode}
+            onClick={() => {
+              if (!isPro && !focusMode) {
+                onRequestPro("Distraction-Free Focus Mode");
+                return;
+              }
+              onToggleFocusMode();
+            }}
             title={focusMode ? "Exit Distraction-Free Focus Mode" : "Enter Distraction-Free Focus Mode"}
             className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition shrink-0 ${
               focusMode
@@ -166,7 +178,11 @@ export function FocusConsole({
               </>
             ) : (
               <>
-                <Maximize2 className="w-3.5 h-3.5" />
+                {!isPro ? (
+                  <Lock className="w-3 h-3 text-[#D4E78A]" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
                 <span className="hidden sm:inline">Focus Mode</span>
               </>
             )}
@@ -207,20 +223,36 @@ export function FocusConsole({
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            {TIMER_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => onSelectSessionMinutes(preset.minutes)}
-                className={`rounded-md px-2.5 py-1 font-mono text-[11px] font-semibold transition ${
-                  sessionMinutes === preset.minutes
-                    ? "bg-[#43B0F8] text-[#070B18]"
-                    : "border border-white/10 bg-[#0B1226] text-[#97A7C0] hover:border-[#43B0F8]/30 hover:text-[#EEF4FA]"
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
+            {TIMER_PRESETS.map((preset) => {
+              const locked = !isPro && !isTimerFree(preset.minutes);
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    if (locked) {
+                      onRequestPro(
+                        preset.minutes === 0
+                          ? "Continuous Playback Block"
+                          : `${preset.minutes}-Minute Extended Focus Block`
+                      );
+                      return;
+                    }
+                    onSelectSessionMinutes(preset.minutes);
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-mono text-[11px] font-semibold transition ${
+                    sessionMinutes === preset.minutes
+                      ? "bg-[#43B0F8] text-[#070B18]"
+                      : locked
+                      ? "border border-white/[0.07] bg-[#0B1226]/70 text-[#6B7E9E] hover:border-[#D4E78A]/40 hover:text-[#D4E78A]"
+                      : "border border-white/10 bg-[#0B1226] text-[#97A7C0] hover:border-[#43B0F8]/30 hover:text-[#EEF4FA]"
+                  }`}
+                >
+                  {preset.label}
+                  {locked && <Lock className="w-2.5 h-2.5 text-[#D4E78A]/80" />}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -325,14 +357,26 @@ export function FocusConsole({
             </button>
             <button
               type="button"
-              onClick={() => onEntrainmentModeChange("isochronic")}
+              onClick={() => {
+                if (!isPro && !isEntrainmentFree("isochronic")) {
+                  onRequestPro("Speaker-Safe Isochronic Mode");
+                  return;
+                }
+                onEntrainmentModeChange("isochronic");
+              }}
               className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition ${
                 entrainmentMode === "isochronic"
                   ? "border-[#D4E78A]/45 bg-[#D4E78A]/15 text-[#D4E78A]"
+                  : !isPro
+                  ? "border-white/[0.08] bg-[#0D162E]/70 text-[#6B7E9E] hover:border-[#D4E78A]/40 hover:text-[#D4E78A]"
                   : "border-white/10 bg-[#0D162E] text-[#97A7C0] hover:text-[#EEF4FA]"
               }`}
             >
-              <Speaker className="w-3.5 h-3.5" />
+              {!isPro ? (
+                <Lock className="w-3 h-3 text-[#D4E78A]" />
+              ) : (
+                <Speaker className="w-3.5 h-3.5" />
+              )}
               Isochronic
             </button>
           </div>
@@ -349,20 +393,32 @@ export function FocusConsole({
             </span>
           </div>
           <div className="grid grid-cols-4 gap-1">
-            {NOISE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onNoiseColorChange(opt.value)}
-                className={`rounded-lg border py-2 text-[11px] font-semibold transition ${
-                  noiseColor === opt.value
-                    ? "border-[#43B0F8]/45 bg-[#43B0F8]/15 text-[#7AC8FF]"
-                    : "border-white/10 bg-[#0D162E] text-[#97A7C0] hover:text-[#EEF4FA]"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+            {NOISE_OPTIONS.map((opt) => {
+              const locked = !isPro && !isNoiseFree(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    if (locked) {
+                      onRequestPro(`${opt.label} Noise Masking Layer`);
+                      return;
+                    }
+                    onNoiseColorChange(opt.value);
+                  }}
+                  className={`inline-flex items-center justify-center gap-0.5 rounded-lg border py-2 text-[11px] font-semibold transition ${
+                    noiseColor === opt.value
+                      ? "border-[#43B0F8]/45 bg-[#43B0F8]/15 text-[#7AC8FF]"
+                      : locked
+                      ? "border-white/[0.07] bg-[#0D162E]/65 text-[#6B7E9E] hover:border-[#D4E78A]/40 hover:text-[#D4E78A]"
+                      : "border-white/10 bg-[#0D162E] text-[#97A7C0] hover:text-[#EEF4FA]"
+                  }`}
+                >
+                  {opt.label}
+                  {locked && <Lock className="w-2.5 h-2.5 text-[#D4E78A]/80" />}
+                </button>
+              );
+            })}
           </div>
         </div>
 

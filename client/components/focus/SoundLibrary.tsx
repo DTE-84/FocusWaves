@@ -1,17 +1,20 @@
 import { useState } from "react";
-import { Clock, Play, Radio, Waves } from "lucide-react";
+import { Clock, Lock, Play, Radio, Waves } from "lucide-react";
 import {
   TRACK_CATEGORIES,
   type Track,
   type TrackCategory,
 } from "@/data/soundLibrary";
+import { isTrackFree } from "@/hooks/useProAccess";
 import { TrackIcon } from "./TrackIcon";
 
 interface SoundLibraryProps {
   tracks: Track[];
   currentTrackId: number;
   isPlaying: boolean;
+  isPro: boolean;
   onSelectTrack: (track: Track, autoPlay?: boolean) => void;
+  onRequestPro: (featureLabel: string) => void;
 }
 
 const BAND_COLORS: Record<Track["band"], string> = {
@@ -26,7 +29,9 @@ export function SoundLibrary({
   tracks,
   currentTrackId,
   isPlaying,
+  isPro,
   onSelectTrack,
+  onRequestPro,
 }: SoundLibraryProps) {
   const [selectedCategory, setSelectedCategory] = useState<"All" | TrackCategory>("All");
 
@@ -48,7 +53,9 @@ export function SoundLibrary({
               15 Calibrated Neural Protocols
             </h2>
             <p className="text-sm sm:text-base text-[#97A7C0]">
-              Every protocol pairs a target brainwave differential with an optimal default noise profile and session length. Click any card to load and play immediately.
+              {isPro
+                ? "All 15 neural protocols unlocked. Click any card to load and play immediately."
+                : "3 core ADHD protocols are unlocked in Free Preview. Unlock FocusWaves Pro for the complete 15-protocol matrix spanning Delta sleep to 40 Hz Gamma sprints."}
             </p>
           </div>
 
@@ -74,14 +81,25 @@ export function SoundLibrary({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((track) => {
             const isActive = track.id === currentTrackId;
+            const free = isTrackFree(track.id);
+            const locked = !isPro && !free;
+
             return (
               <button
                 key={track.id}
                 type="button"
-                onClick={() => onSelectTrack(track, true)}
+                onClick={() => {
+                  if (locked) {
+                    onRequestPro(`${track.name} (${track.band} ${track.beatFrequency} Hz)`);
+                    return;
+                  }
+                  onSelectTrack(track, true);
+                }}
                 className={`group text-left rounded-2xl p-6 transition duration-200 flex flex-col justify-between ${
                   isActive
                     ? "fw-card-active"
+                    : locked
+                    ? "fw-card opacity-85 hover:opacity-100 hover:border-[#D4E78A]/35 hover:-translate-y-0.5"
                     : "fw-card hover:border-[#43B0F8]/30 hover:-translate-y-0.5"
                 }`}
               >
@@ -91,17 +109,33 @@ export function SoundLibrary({
                       className={`flex h-11 w-11 items-center justify-center rounded-xl border transition ${
                         isActive
                           ? "border-[#43B0F8]/50 bg-[#43B0F8]/15 text-[#7AC8FF]"
+                          : locked
+                          ? "border-white/10 bg-[#0B1226] text-[#6B7E9E] group-hover:border-[#D4E78A]/35 group-hover:text-[#D4E78A]"
                           : "border-white/10 bg-[#0B1226] text-[#97A7C0] group-hover:border-[#43B0F8]/35 group-hover:text-[#7AC8FF]"
                       }`}
                     >
                       <TrackIcon name={track.icon} className="w-5 h-5" />
                     </div>
 
-                    <span
-                      className={`rounded-md border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${BAND_COLORS[track.band]}`}
-                    >
-                      {track.band} · {track.beatFrequency} Hz
-                    </span>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {!isPro && (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                            free
+                              ? "border-[#43B0F8]/35 bg-[#43B0F8]/12 text-[#7AC8FF]"
+                              : "border-[#D4E78A]/35 bg-[#D4E78A]/10 text-[#D4E78A]"
+                          }`}
+                        >
+                          {locked && <Lock className="w-2.5 h-2.5" />}
+                          {free ? "Free" : "Pro"}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-md border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${BAND_COLORS[track.band]}`}
+                      >
+                        {track.band} · {track.beatFrequency} Hz
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -135,12 +169,19 @@ export function SoundLibrary({
                   </div>
                   <span
                     className={`inline-flex items-center gap-1 font-semibold ${
-                      isActive && isPlaying
+                      locked
+                        ? "text-[#D4E78A]"
+                        : isActive && isPlaying
                         ? "text-[#43B0F8]"
                         : "text-[#97A7C0] group-hover:text-[#7AC8FF]"
                     }`}
                   >
-                    {isActive && isPlaying ? (
+                    {locked ? (
+                      <>
+                        <Lock className="w-3 h-3" />
+                        Unlock Pro
+                      </>
+                    ) : isActive && isPlaying ? (
                       <>
                         <span className="h-2 w-2 rounded-full bg-[#43B0F8] animate-pulse" />
                         Active
