@@ -9,6 +9,11 @@ interface ActiveConfig {
   mode: EntrainmentMode;
 }
 
+// Tiny silent PCM WAV (~0.25s) used exclusively while playing to anchor mobile OS
+// Media Session / lock-screen controls on iOS Safari & Android Chrome.
+const SILENT_WAV_DATA_URI =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
 function createNoiseBuffer(ctx: AudioContext, color: Exclude<NoiseColor, "off">): AudioBuffer {
   const durationSeconds = 3;
   const bufferSize = ctx.sampleRate * durationSeconds;
@@ -81,6 +86,33 @@ export const useAudioGenerator = () => {
   const noiseBuffersRef = useRef<Partial<Record<Exclude<NoiseColor, "off">, AudioBuffer>>>({});
   const activeConfigRef = useRef<ActiveConfig | null>(null);
   const isPlayingRef = useRef(false);
+  const keepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const startKeepAlive = useCallback(() => {
+    try {
+      if (!keepAliveAudioRef.current) {
+        const audio = new Audio(SILENT_WAV_DATA_URI);
+        audio.loop = true;
+        audio.volume = 0.001;
+        keepAliveAudioRef.current = audio;
+      }
+      void keepAliveAudioRef.current.play().catch(() => {
+        // Autoplay restriction — ignore gracefully
+      });
+    } catch {
+      // Ignore unsupported audio element environments
+    }
+  }, []);
+
+  const stopKeepAlive = useCallback(() => {
+    if (keepAliveAudioRef.current) {
+      try {
+        keepAliveAudioRef.current.pause();
+      } catch {
+        // Ignore pause errors
+      }
+    }
+  }, []);
 
   const ensureAudioGraph = useCallback(() => {
     if (!audioContextRef.current) {
@@ -278,8 +310,9 @@ export const useAudioGenerator = () => {
 
       isPlayingRef.current = true;
       setIsPlaying(true);
+      startKeepAlive();
     },
-    [ensureAudioGraph, entrainmentMode, noiseColor, buildEntrainmentNodes, startNoiseLayer, volume]
+    [ensureAudioGraph, entrainmentMode, noiseColor, buildEntrainmentNodes, startNoiseLayer, volume, startKeepAlive]
   );
 
   const stopTrack = useCallback(() => {
@@ -288,6 +321,7 @@ export const useAudioGenerator = () => {
 
     isPlayingRef.current = false;
     setIsPlaying(false);
+    stopKeepAlive();
 
     if (ctx && masterGain) {
       const now = ctx.currentTime;
@@ -305,7 +339,7 @@ export const useAudioGenerator = () => {
       cleanupToneNodes();
       cleanupNoiseNode();
     }
-  }, [cleanupToneNodes, cleanupNoiseNode]);
+  }, [cleanupToneNodes, cleanupNoiseNode, stopKeepAlive]);
 
   const togglePlay = useCallback(
     (baseFreq: number, beatFreq: number) => {
@@ -386,13 +420,14 @@ export const useAudioGenerator = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopKeepAlive();
       cleanupToneNodes();
       cleanupNoiseNode();
       if (audioContextRef.current) {
         void audioContextRef.current.close();
       }
     };
-  }, [cleanupToneNodes, cleanupNoiseNode]);
+  }, [stopKeepAlive, cleanupToneNodes, cleanupNoiseNode]);
 
   return {
     isPlaying,

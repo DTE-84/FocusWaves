@@ -11,6 +11,7 @@ import {
   SkipBack,
   SkipForward,
   Speaker,
+  Sun,
   Target,
   Volume2,
   Waves,
@@ -59,6 +60,9 @@ interface FocusConsoleProps {
   onActiveObjectiveChange: (val: string) => void;
   focusMode: boolean;
   onToggleFocusMode: () => void;
+  keepAwake: boolean;
+  onToggleKeepAwake: () => void;
+  wakeLockActive: boolean;
 }
 
 function formatClock(totalSeconds: number): string {
@@ -92,6 +96,9 @@ export function FocusConsole({
   onActiveObjectiveChange,
   focusMode,
   onToggleFocusMode,
+  keepAwake,
+  onToggleKeepAwake,
+  wakeLockActive,
 }: FocusConsoleProps) {
   const totalSeconds = sessionMinutes > 0 ? sessionMinutes * 60 : 0;
   const remainingSeconds = totalSeconds > 0 ? Math.max(0, totalSeconds - elapsedSeconds) : 0;
@@ -121,28 +128,50 @@ export function FocusConsole({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onToggleFocusMode}
-          title={focusMode ? "Exit Distraction-Free Focus Mode" : "Enter Distraction-Free Focus Mode"}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition shrink-0 ${
-            focusMode
-              ? "border-[#43B0F8]/45 bg-[#43B0F8]/15 text-[#7AC8FF]"
-              : "border-white/10 bg-[#0B1226] text-[#97A7C0] hover:border-[#43B0F8]/35 hover:text-[#EEF4FA]"
-          }`}
-        >
-          {focusMode ? (
-            <>
-              <Minimize2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Exit Focus</span>
-            </>
-          ) : (
-            <>
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Focus Mode</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={onToggleKeepAwake}
+            title={
+              keepAwake
+                ? wakeLockActive
+                  ? "Screen Wake Lock active during playback"
+                  : "Keep screen awake while playing"
+                : "Allow screen sleep during playback"
+            }
+            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider transition ${
+              keepAwake
+                ? "border-[#D4E78A]/40 bg-[#D4E78A]/12 text-[#D4E78A]"
+                : "border-white/10 bg-[#0B1226] text-[#6B7E9E] hover:text-[#EEF4FA]"
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{keepAwake ? "Awake" : "Sleep OK"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleFocusMode}
+            title={focusMode ? "Exit Distraction-Free Focus Mode" : "Enter Distraction-Free Focus Mode"}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition shrink-0 ${
+              focusMode
+                ? "border-[#43B0F8]/45 bg-[#43B0F8]/15 text-[#7AC8FF]"
+                : "border-white/10 bg-[#0B1226] text-[#97A7C0] hover:border-[#43B0F8]/35 hover:text-[#EEF4FA]"
+            }`}
+          >
+            {focusMode ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Exit Focus</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Focus Mode</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Single-Task Anchor (ADHD Executive Function Lock) */}

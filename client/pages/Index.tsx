@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   AudioWaveform,
   Brain,
+  Download,
   ExternalLink,
   Headphones,
   Maximize2,
@@ -15,7 +16,9 @@ import { toast } from "sonner";
 import { soundLibrary, type Track } from "@/data/soundLibrary";
 import { useAudioGenerator } from "@/hooks/useAudioGenerator";
 import { useFocusTelemetry } from "@/hooks/useFocusTelemetry";
+import { useMobileExperience } from "@/hooks/useMobileExperience";
 import { FocusConsole } from "@/components/focus/FocusConsole";
+import { InstallAppDialog } from "@/components/focus/InstallAppDialog";
 import { ParkingLot } from "@/components/focus/ParkingLot";
 import { SoundLibrary } from "@/components/focus/SoundLibrary";
 import { ScienceSection } from "@/components/focus/ScienceSection";
@@ -61,18 +64,32 @@ export default function Index() {
     clearCompletedParking,
   } = useFocusTelemetry();
 
+  const {
+    isInstalled,
+    isIOS,
+    keepAwake,
+    setKeepAwake,
+    wakeLockActive,
+    installHelpOpen,
+    setInstallHelpOpen,
+    handleInstallClick,
+    triggerHaptic,
+  } = useMobileExperience(isPlaying);
+
   const currentTrack = soundLibrary[currentTrackIdx];
   const logoSrc = `${import.meta.env.BASE_URL}focuswaveslogo.png`;
 
   const handleTogglePlay = useCallback(() => {
+    triggerHaptic("tap");
     togglePlay(currentTrack.baseFrequency, currentTrack.beatFrequency);
-  }, [togglePlay, currentTrack.baseFrequency, currentTrack.beatFrequency]);
+  }, [triggerHaptic, togglePlay, currentTrack.baseFrequency, currentTrack.beatFrequency]);
 
   const handleSelectTrack = useCallback(
     (track: Track, autoPlay = false) => {
       const idx = soundLibrary.findIndex((t) => t.id === track.id);
       if (idx === -1) return;
 
+      triggerHaptic("tap");
       setCurrentTrackIdx(idx);
       setSessionMinutes(track.recommendedMinutes);
       setElapsedSeconds(0);
@@ -87,7 +104,7 @@ export default function Index() {
         );
       }
     },
-    [entrainmentMode, isPlaying, setNoiseColor, startTrack]
+    [triggerHaptic, entrainmentMode, isPlaying, setNoiseColor, startTrack]
   );
 
   const handlePrevTrack = useCallback(() => {
@@ -100,23 +117,52 @@ export default function Index() {
     handleSelectTrack(soundLibrary[nextIdx], isPlaying);
   }, [currentTrackIdx, handleSelectTrack, isPlaying]);
 
-  const handleSelectSessionMinutes = useCallback((mins: number) => {
-    setSessionMinutes(mins);
-    setElapsedSeconds(0);
-  }, []);
+  const handleSelectSessionMinutes = useCallback(
+    (mins: number) => {
+      triggerHaptic("tap");
+      setSessionMinutes(mins);
+      setElapsedSeconds(0);
+    },
+    [triggerHaptic]
+  );
 
   const handleResetTimer = useCallback(() => {
+    triggerHaptic("tap");
     setElapsedSeconds(0);
-  }, []);
+  }, [triggerHaptic]);
 
   const handleLogBlockNow = useCallback(() => {
     const mins = Math.max(1, Math.round(elapsedSeconds / 60));
     recordSession(currentTrack.name, currentTrack.band, mins, activeObjective);
     setElapsedSeconds(0);
+    triggerHaptic("success");
     toast.success(`Logged ${mins}m ${currentTrack.band} focus block`, {
       description: activeObjective.trim() || currentTrack.name,
     });
-  }, [elapsedSeconds, recordSession, currentTrack.name, currentTrack.band, activeObjective]);
+  }, [elapsedSeconds, recordSession, currentTrack.name, currentTrack.band, activeObjective, triggerHaptic]);
+
+  // Honor PWA Home Screen shortcut query parameters (?preset=initiation|deep|reset)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const preset = params.get("preset");
+    if (!preset) return;
+
+    const map: Record<string, { trackId: number; mins: number }> = {
+      initiation: { trackId: 3, mins: 15 },
+      deep: { trackId: 1, mins: 45 },
+      reset: { trackId: 4, mins: 15 },
+    };
+
+    const match = map[preset];
+    if (!match) return;
+    const idx = soundLibrary.findIndex((t) => t.id === match.trackId);
+    if (idx !== -1) {
+      setCurrentTrackIdx(idx);
+      setSessionMinutes(match.mins);
+      setNoiseColor(soundLibrary[idx].recommendedNoise);
+      setFocusMode(true);
+    }
+  }, [setNoiseColor]);
 
   // Real-time session timer + completion chime & automatic telemetry logging
   useEffect(() => {
@@ -128,6 +174,7 @@ export default function Index() {
         if (sessionMinutes > 0 && next >= sessionMinutes * 60) {
           stopTrack();
           playCompletionChime();
+          triggerHaptic("success");
           recordSession(
             currentTrack.name,
             currentTrack.band,
@@ -149,6 +196,7 @@ export default function Index() {
     sessionMinutes,
     stopTrack,
     playCompletionChime,
+    triggerHaptic,
     recordSession,
     currentTrack.name,
     currentTrack.band,
@@ -199,6 +247,7 @@ export default function Index() {
     const found = soundLibrary.find((t) => t.id === trackId);
     if (!found) return;
     const idx = soundLibrary.findIndex((t) => t.id === trackId);
+    triggerHaptic("tap");
     setCurrentTrackIdx(idx);
     setSessionMinutes(mins);
     setElapsedSeconds(0);
@@ -212,7 +261,7 @@ export default function Index() {
   return (
     <div className="min-h-screen text-[#EEF4FA] flex flex-col">
       {/* Top Navigation */}
-      <nav className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#070B18]/85 backdrop-blur-xl">
+      <nav className="safe-top sticky top-0 z-50 border-b border-white/[0.08] bg-[#070B18]/85 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <a
@@ -270,10 +319,24 @@ export default function Index() {
             </div>
           )}
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {!isInstalled && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#43B0F8]/35 bg-[#43B0F8]/12 px-3 py-2 text-xs font-display font-bold text-[#7AC8FF] hover:bg-[#43B0F8]/22 transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Install App</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={() => setFocusMode((prev) => !prev)}
+              onClick={() => {
+                triggerHaptic("tap");
+                setFocusMode((prev) => !prev);
+              }}
               className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-display font-bold transition ${
                 focusMode
                   ? "border-[#43B0F8]/45 bg-[#43B0F8]/15 text-[#7AC8FF]"
@@ -300,11 +363,11 @@ export default function Index() {
       <main className="flex-1">
         {focusMode ? (
           /* Distraction-Free Execution Cockpit */
-          <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div className="fw-eyebrow">
                 <span className="h-2 w-2 rounded-full bg-[#43B0F8] animate-pulse" />
-                Distraction-Free Execution Cockpit · Press Space to Play/Pause · Esc to Exit
+                Distraction-Free Execution Cockpit · Space to Play/Pause · Esc to Exit
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -333,6 +396,12 @@ export default function Index() {
                   onActiveObjectiveChange={setActiveObjective}
                   focusMode={focusMode}
                   onToggleFocusMode={() => setFocusMode(false)}
+                  keepAwake={keepAwake}
+                  onToggleKeepAwake={() => {
+                    triggerHaptic("tap");
+                    setKeepAwake((prev) => !prev);
+                  }}
+                  wakeLockActive={wakeLockActive}
                 />
               </div>
               <div className="lg:col-span-5">
@@ -349,13 +418,13 @@ export default function Index() {
         ) : (
           <>
             {/* Hero + Live Console */}
-            <section id="console" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20">
+            <section id="console" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
                 {/* Left Copy & Quick Presets */}
                 <div className="lg:col-span-5 space-y-7">
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#43B0F8]/30 bg-[#43B0F8]/10 px-3.5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7AC8FF]">
                     <span className="h-2 w-2 rounded-full bg-[#43B0F8] shadow-[0_0_10px_#43B0F8] animate-pulse" />
-                    Web Audio DSP · Zero-Server Privacy
+                    Installable PWA · Zero-Server DSP
                   </div>
 
                   <div className="space-y-4">
@@ -412,7 +481,7 @@ export default function Index() {
                         <AudioWaveform className="w-3.5 h-3.5 text-[#43B0F8]" />
                         Live Synth
                       </div>
-                      <p className="text-[11px] text-[#6B7E9E] mt-0.5">No static loops</p>
+                      <p className="text-[11px] text-[#6B7E9E] mt-0.5">Offline capable</p>
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 text-xs font-display font-bold text-[#EEF4FA]">
@@ -457,6 +526,12 @@ export default function Index() {
                     onActiveObjectiveChange={setActiveObjective}
                     focusMode={focusMode}
                     onToggleFocusMode={() => setFocusMode(true)}
+                    keepAwake={keepAwake}
+                    onToggleKeepAwake={() => {
+                      triggerHaptic("tap");
+                      setKeepAwake((prev) => !prev);
+                    }}
+                    wakeLockActive={wakeLockActive}
                   />
                 </div>
               </div>
@@ -548,6 +623,12 @@ export default function Index() {
           </div>
         </footer>
       )}
+
+      <InstallAppDialog
+        open={installHelpOpen}
+        isIOS={isIOS}
+        onClose={() => setInstallHelpOpen(false)}
+      />
     </div>
   );
 }

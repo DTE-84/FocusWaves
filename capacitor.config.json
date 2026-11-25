@@ -1,0 +1,32 @@
+{
+  "appId": "icu.dtesolutions.focuswaves",
+  "appName": "FocusWaves",
+  "webDir": "dist/spa",
+  "backgroundColor": "#070B18",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#070B18",
+    "allowsLinkPreview": false
+  },
+  "android": {
+    "backgroundColor": "#070B18",
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#070B18",
+      "overlaysWebView": false
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#070B18",
+      "showSpinner": false
+    }
+  }
+}

@@ -10,7 +10,10 @@
       "start": "node dist/server/node-build.mjs",
       "test": "vitest --run",
       "format.fix": "prettier --write .",
-      "typecheck": "tsc"
+      "typecheck": "tsc",
+      "mobile:sync": "npm run build:client && npx cap sync",
+      "mobile:android": "npm run mobile:sync && npx cap open android",
+      "mobile:ios": "npm run mobile:sync && npx cap open ios"
     },
     "dependencies": {
       "dotenv": "^17.2.1",

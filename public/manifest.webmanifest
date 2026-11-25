@@ -1,0 +1,49 @@
+{
+  "name": "FocusWaves — Acoustic Focus & ADHD Studio",
+  "short_name": "FocusWaves",
+  "description": "Real-time binaural beats, speaker-safe isochronic pulses, brown/pink noise masking, and ADHD executive-function tools running 100% locally.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070B18",
+  "theme_color": "#070B18",
+  "categories": ["health", "productivity", "lifestyle"],
+  "icons": [
+    {
+      "src": "/focuswaveslogo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/focuswaveslogo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "15m Task Initiation",
+      "short_name": "15m Sprint",
+      "description": "Launch 14 Hz Clarity + Pink Noise for fast ADHD activation",
+      "url": "/?preset=initiation",
+      "icons": [{ "src": "/focuswaveslogo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "45m Deep Focus",
+      "short_name": "Deep Focus",
+      "description": "Launch 10 Hz Alpha + Brown Noise for sustained deep work",
+      "url": "/?preset=deep",
+      "icons": [{ "src": "/focuswaveslogo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Sensory Reset",
+      "short_name": "Calm Reset",
+      "description": "Launch 6 Hz Theta + Brown Noise to cool overstimulation",
+      "url": "/?preset=reset",
+      "icons": [{ "src": "/focuswaveslogo.png", "sizes": "192x192" }]
+    }
+  ]
+}
