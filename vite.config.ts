@@ -5,7 +5,7 @@ import { createServer } from "./server";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: mode === "production" ? "/FocusWaves/" : "/",
+  base: "/",
   server: {
     host: "::",
     port: 8080,

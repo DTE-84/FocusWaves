@@ -1,25 +1,15 @@
-name: Deploy FocusWaves to GitHub Pages
+name: FocusWaves CI Check
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,19 +28,4 @@ jobs:
         run: npm run typecheck
 
       - name: Build Client SPA
-        run: |
-          npm run build:client
-          cp dist/spa/index.html dist/spa/404.html
-          touch dist/spa/.nojekyll
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './dist/spa'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        run: npm run build:client
